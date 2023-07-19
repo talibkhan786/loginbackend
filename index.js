@@ -1,12 +1,18 @@
 // Importing the required modules
-const express = require('express');
-const bodyParser = require('body-parser');
+const express = require("express");
+const bodyParser = require("body-parser");
+const jwt = require("jsonwebtoken");
+const jwtSecret = "maynameistalibkhan";
+
+// Importing the required modules
+const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
 
 // Creating an instance of Express
 const app = express();
 
 // Parsing incoming JSON data
-app.use(bodyParser.json({ extended: true }));
+app.use(express.json());
 
 // Parsing incoming URL-encoded data
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -14,80 +20,80 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization,");
   next();
 });
 
-// Rest of your code...
-
-
-// Importing the required modules
-const mongoose = require('mongoose');
-
-// Connect to MongoDB using async/await
-async function connectToDatabase() {
-  try {
-    await mongoose.connect('mongodb://localhost:27017/mydatabase', {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    console.log('Connected to MongoDB!');
-  } catch (error) {
-    console.error('Failed to connect to MongoDB:', error);
-  }
-}
-
-// Calling the connectToDatabase function
-connectToDatabase();
-
 // Creating Schema
-
 const userSchema = new mongoose.Schema({
   name: String,
   email: String,
-  password: String
-})
+  password: String,
+  location: String,
+  date: {
+    type: Date,
+    default: Date.now,
+  },
+});
 
-const User = new mongoose.model("User", userSchema)
+const User = mongoose.model("User", userSchema);
 
+// Routes
 
+// Login
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
 
+  if (!email || !password) {
+    return res.send({ message: "Fill in the details!" });
+  }
 
-  //Routes
+  try {
+    const user = await User.findOne({ email: email });
 
-//Login
-app.post("/login",async (req, res) => {
-  const { email, password } = req.body
-  
-  try{
-    const user = await User.findOne({ email: email })
     if (user) {
-      if (password === user.password) {
-        res.send({ message: "Login Successfull", user: user });
+      const passwordMatch = await bcrypt.compare(password, user.password);
+
+      if (passwordMatch) {
+        const data = {
+          user: {
+            id: user.id,
+          },
+        };
+        const authToken = jwt.sign(data, jwtSecret);
+
+        res.send({
+          message: "Login Successful",
+          user: user,
+          authToken: authToken,
+        });
       } else {
         res.send({ message: "Password didn't match" });
       }
     } else {
-      res.send({ message: "User not Registered" })
+      res.send({ message: "User not Registered" });
     }
-    } catch (err) {
-      res.send(err);
-    }
-  })
+  } catch (err) {
+    res.send(err);
+  }
+});
 
-//Register
+// Register
 app.post("/register", async (req, res) => {
-  const { name, email, password } = req.body
+  const { name, email, password } = req.body;
+
   try {
     const user = await User.findOne({ email: email });
 
     if (user) {
       res.send({ message: "User already registered" });
     } else {
+      const hashedPassword = await bcrypt.hash(password, 10); // Hash the password with bcrypt
+
       const newUser = new User({
         name,
         email,
-        password
+        password: hashedPassword, // Store the hashed password
       });
 
       await newUser.save();
@@ -96,11 +102,20 @@ app.post("/register", async (req, res) => {
   } catch (err) {
     res.send(err);
   }
+});
 
-})
+// Importing the required routes
+const displayDataRoutes = require("./Routes/DisplayData");
+const dbRoutes = require("./db");
 
+// Using the routes
+app.use("/api", displayDataRoutes);
+app.use("/api", dbRoutes);
 
+app.get("/", (req, res) => {
+  res.send("Hello");
+});
 
 app.listen(9001, () => {
-  console.log("BE started at port 9001")
-})
+  console.log("Backend started at port 9001");
+});
